@@ -1,0 +1,187 @@
+---
+title: "Prediction Assignment"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE, warning=FALSE, message=FALSE)
+```
+
+## Overview
+
+This study reviews exercise data from a variety of devices such as Jawbone Up, Nike FuelBand, and Fitbit.  The goal of this study is to predict the manner in which the exercise participants did their exercise.  This is denoted by the "classe" variable in the training set.  Data for this study comes from http://groupware.les.inf.puc-rio.br/har.
+
+Training data is available at this link:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+Test data is available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+## Loading Necessary Libraries
+
+Before loading the data, I'll load the necessary R packages required for my analysis.
+
+```{r load libraries, results="hide"}
+library (caret)
+library (knitr)
+library(rpart)
+library(randomForest)
+```
+
+I'll also set the seed to ensure reproducability.
+
+```{r set seed}
+set.seed(55555)
+```
+
+
+## Loading the Data
+
+Before I can do any analysis, I'll load the training and test datasets.
+
+```{r load data}
+
+## Setting the URLs for each dataset
+TrainURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+## Reading the data
+trainData <- read.csv(url(TrainURL))
+testData <- read.csv(url(TestURL))
+
+```
+
+Now I'll partition the training data into a training and test set.  The original test set is set aside for the end, where I'll use the best prediction model to predict the values for the Course Project Prediction Quiz.
+
+``` {r partition}
+
+## Creating a training and test set from the training data
+## 70% of the data will be used in the training set
+
+inTrain <- createDataPartition(trainData$classe, p=0.7, list=FALSE)
+trainSet <- trainData[inTrain,]
+testSet <- trainData[-inTrain,]
+
+dim(trainSet)
+dim(testSet)
+
+```
+
+
+## Cleaning the Data
+
+The partitioned datasets each have 160 variables.  Some of these variables consist of mostly NA values.  I'll remove the variables with greater than 95% NA values to improve my analysis.  I'll also remove the Near Zero Variance variables and the first ID variable so that it doesn't interfere with the prediction algorithms.
+
+```{r data cleansing}
+
+##Remove Near Zero Variance variables
+NZV <- nearZeroVar(trainSet)
+trainSet<-trainSet[,-NZV]
+testSet<-testSet[,-NZV]
+
+## Remove mostly NA variables and the ID variable
+NAvalues <- sapply(trainSet, function(x) mean(is.na(x))>.95)
+trainSet <- trainSet[, NAvalues==FALSE]
+trainSet <- trainSet[c(-1)]
+testSet  <- testSet[, NAvalues==FALSE]
+testSet <- testSet[c(-1)]
+dim(trainSet)
+dim(testSet)
+```
+
+After removing the NA values, the Near Zero Variance variables, and the ID variable, the data now consists of 58 variables.
+
+## Prediction Models
+
+The three different modeling alogirthms that I use here in my analysis are as follows:
+
+1. Decision Trees
+2. Random Forest
+3. Generalized Boosted Model
+
+Here I will create each of these three models.  Note that I have already set the seed value for my analysis.
+
+### Decision Trees
+
+Here is my code for building the Decision Trees Model.  First I'll set the cross validation to K = 3.  Note that this K value will be used for my other models as well.
+
+```{r cross validation}
+cvControl <- trainControl(method='cv', number = 3, verboseIter = FALSE)
+```
+
+``` {r decision trees}
+
+DTreesModel <- train(classe ~ ., data=trainSet,trControl=cvControl, method='rpart')
+```
+
+
+I'll check the out of sample error for the Decision Trees model to determine prediction accuracy.
+
+```{r decision trees OSE}
+predDTrees <- predict(DTreesModel, newdata=testSet)
+cMatDTrees <- confusionMatrix(predDTrees, testSet$classe)
+cMatDTrees
+
+```
+
+We can see that the accuracy of the Decision Trees model against the test data set is only 45.52%, which is relatively low.  I'll now do the same for the Random Forest Model.
+
+### Random Forest
+
+Here is my code for building the Random Forest Model. 
+
+``` {r random forest}
+
+RFModel <- train(classe ~ ., data=trainSet,trControl=cvControl, method='rf')
+
+```
+
+I'll check the out of sample error for the Random Forest model to determine prediction accuracy.
+
+```{r random forest OSE}
+predRF <- predict(RFModel, newdata=testSet)
+cMatRF <- confusionMatrix(predRF, testSet$classe)
+cMatRF
+
+```
+
+We can see that the accuracy of the Random Forest model against the test data set is 99.9%.  Since this is so high, I'll likely use the Random Forest model against the final test set.  To be thorough though, I'll do the same analysis for a Generalized Boosted Model.
+
+
+### Generalized Boosted Model
+
+Here is my code for building the Generalized Boosted Model
+
+``` {r generalized boosted, results="hide"}
+
+GBMModel <- train(classe ~ ., data=trainSet,trControl=cvControl, method='gbm')
+
+```
+
+
+
+I'll check the out of sample error for the Generalized Boosted model to determine prediction accuracy.
+
+```{r GBM OSE}
+predGBM <- predict(GBMModel, newdata=testSet)
+cMatGBM <- confusionMatrix(predGBM, testSet$classe)
+cMatGBM
+
+```
+
+We can see that the accuracy of the Generalized Boosted model against the test data set is 99.75%.  While this is still very high, it is not as good as the 99.99% accuracy of the Random Forest model.
+
+## Running Prediction Model on Test Data
+
+To recap, the accuracy of my predictions models was as follows:
+
+1. Decision Trees: 45.52%
+2. Random Forest: 99.9%
+3. Generalized Boosted Model: 99.75%
+
+Based on this, the accuracy of the Random Forest model is highest and therefore, I'll use that model to predict the exercise type (classe) of the Test Data for the 20 quiz results.  This prediction is shown below.
+
+```{r test prediction}
+TestPred <- predict(RFModel,newdata=testData)
+TestPred
+```
